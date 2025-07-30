@@ -1,0 +1,8 @@
+{
+  "name": "Gina AI English Tutor",
+  "description": "An AI-powered English learning application that guides beginners through an 8-step learning flow, including role-playing, feedback, and shadowing practice.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "prompt": ""
+}
