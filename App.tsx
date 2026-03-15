@@ -4,7 +4,7 @@ import { Step, type ChatMessage, type MissionData, type DialogueTurn, type First
 import { GeminiService, DEFAULT_SETTINGS, getOllamaModels } from './services/geminiService';
 import { useSpeech } from './hooks/useSpeech';
 import LoadingSpinner from './components/LoadingSpinner';
-import { MicrophoneIcon, PlayIcon, RefreshIcon, CheckIcon, HamburgerIcon, XIcon } from './components/Icons';
+import { MicrophoneIcon, PlayIcon, RefreshIcon, CheckIcon, HamburgerIcon, XIcon, DownloadIcon } from './components/Icons';
 
 const SETTINGS_KEY = 'gina_ai_settings';
 
@@ -69,7 +69,30 @@ const App: React.FC = () => {
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     }, [settings]);
     
-    const { isListening, isSpeaking, speak, startListening, stopListening, cancelSpeech } = useSpeech();
+    const { isListening, isSpeaking, speak, startListening, stopListening, cancelSpeech, voices, setVoice } = useSpeech();
+    const [selectedVoiceName, setSelectedVoiceName] = useState<string>(
+        () => localStorage.getItem('gina_voice') ?? ''
+    );
+
+    const englishVoices = voices.filter(v => v.lang.startsWith('en'));
+
+    // voices가 비동기로 로드된 후 저장된 목소리를 자동 적용
+    useEffect(() => {
+        if (voices.length === 0 || !selectedVoiceName) return;
+        const voice = voices.find(v => v.name === selectedVoiceName) ?? null;
+        setVoice(voice);
+    }, [voices, selectedVoiceName, setVoice]);
+
+    const handleVoiceChange = (name: string) => {
+        setSelectedVoiceName(name);
+        if (name) {
+            localStorage.setItem('gina_voice', name);
+        } else {
+            localStorage.removeItem('gina_voice');
+        }
+        const voice = voices.find(v => v.name === name) ?? null;
+        setVoice(voice);
+    };
     const chatEndRef = useRef<HTMLDivElement>(null);
 
     const addMessage = useCallback((sender: ChatMessage['sender'], text?: string, component?: React.ReactNode) => {
@@ -305,11 +328,113 @@ const App: React.FC = () => {
         }
     }, [missionData, step, currentShadowingIndex, addMessage, speak]);
 
+    const handleSkip = useCallback(() => {
+        if (step === Step.BASIC_ROLEPLAY_IN_PROGRESS || step === Step.ADVANCED_ROLEPLAY_IN_PROGRESS) {
+            handleUserSpeech('(건너뜀)');
+        } else if (step === Step.SHADOWING_IN_PROGRESS) {
+            handleShadowingSpeech('(건너뜀)');
+        }
+    }, [step, handleUserSpeech, handleShadowingSpeech]);
+
     const handleSessionEnd = () => {
         setStep(Step.SESSION_ENDED);
         addMessage('gina', '네, 알겠습니다. 오늘 함께해서 즐거웠어요! 다음에 또 만나요!');
         speak('Okay. It was fun learning with you today! See you next time!');
     };
+
+    const handleDownload = useCallback(() => {
+        const date = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '-').replace('.', '');
+        const lines: string[] = [];
+
+        lines.push(`# Gina AI English Tutor — 학습 기록`);
+        lines.push(`> 날짜: ${date}`);
+        lines.push('');
+
+        // Mission
+        if (missionData) {
+            lines.push(`## 미션`);
+            lines.push(`**${missionData.missionTitle}**`);
+            lines.push(`${missionData.scenario}`);
+            lines.push('');
+
+            lines.push(`### 핵심 표현`);
+            missionData.keyExpressions.forEach(e => {
+                lines.push(`- **${e.english}** — ${e.korean}`);
+            });
+            lines.push('');
+
+            lines.push(`### 예시 대화`);
+            missionData.exampleDialogue.forEach(d => {
+                lines.push(`- ${d.speaker === 'teacher' ? 'Tutor' : 'You'}: ${d.sentence}`);
+            });
+            lines.push('');
+
+            lines.push(`### 오늘의 팁`);
+            lines.push(`> ${missionData.tip}`);
+            lines.push('');
+        }
+
+        // Conversation log (text only)
+        const textMessages = messages.filter(m => m.text && m.text !== '(건너뜀)');
+        if (textMessages.length > 0) {
+            lines.push(`## 대화 기록`);
+            textMessages.forEach(m => {
+                const sender = m.sender === 'gina' ? 'Gina' : m.sender === 'user' ? '나' : '시스템';
+                lines.push(`**[${sender}]** ${m.text}`);
+            });
+            lines.push('');
+        }
+
+        // First feedback
+        if (firstFeedback) {
+            lines.push(`## 1차 피드백`);
+            lines.push(firstFeedback.praise);
+            lines.push('');
+            lines.push(`### 새로운 표현`);
+            firstFeedback.newExpressions.forEach(e => {
+                lines.push(`- **${e.english}** — ${e.korean}`);
+            });
+            lines.push('');
+        }
+
+        // Final feedback
+        if (finalFeedback) {
+            lines.push(`## 최종 피드백`);
+            lines.push(finalFeedback.finalPraise);
+            lines.push('');
+            lines.push(`**잘한 점:** ${finalFeedback.goodPoints}`);
+            lines.push('');
+
+            if (finalFeedback.corrections.length > 0) {
+                lines.push(`### 교정 제안`);
+                finalFeedback.corrections.forEach(c => {
+                    lines.push(`- 내가 한 말: "${c.userSentence}"`);
+                    lines.push(`  더 자연스러운 표현: "${c.recommendedSentence}"`);
+                    lines.push(`  이유: ${c.reason}`);
+                });
+                lines.push('');
+            }
+
+            if (finalFeedback.additionalVocab.length > 0) {
+                lines.push(`### 추가 어휘`);
+                finalFeedback.additionalVocab.forEach(v => {
+                    lines.push(`- **${v.english}** — ${v.korean}`);
+                });
+                lines.push('');
+            }
+
+            lines.push(`### 오늘의 문장`);
+            lines.push(`> "${finalFeedback.sentenceToMemorize}"`);
+        }
+
+        const blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `gina-학습기록-${date}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }, [missionData, messages, firstFeedback, finalFeedback]);
 
     // Card Components defined inside App to have access to state and handlers
     const MissionCard = ({ mission }: { mission: MissionData }) => (
@@ -397,9 +522,24 @@ const App: React.FC = () => {
                 return <button onClick={handleStartRoleplay} className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg transition-colors">I'm Ready!</button>;
             case Step.BASIC_ROLEPLAY_IN_PROGRESS:
             case Step.ADVANCED_ROLEPLAY_IN_PROGRESS:
-                return <button onClick={() => startListening(handleUserSpeech)} disabled={isListening} className={`w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300 ${isListening ? 'bg-red-500 animate-pulse' : 'bg-blue-500 hover:bg-blue-600'} text-white`}>
-                    <MicrophoneIcon className="h-10 w-10" />
-                </button>;
+                return (
+                    <div className="flex flex-col items-center gap-2 w-full">
+                        <button
+                            onClick={() => startListening(handleUserSpeech)}
+                            disabled={isListening}
+                            className={`w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300 ${isListening ? 'bg-red-500 animate-pulse' : 'bg-blue-500 hover:bg-blue-600'} text-white shadow-lg`}
+                        >
+                            <MicrophoneIcon className="h-10 w-10" />
+                        </button>
+                        <button
+                            onClick={handleSkip}
+                            disabled={isListening}
+                            className="text-xs text-gray-400 hover:text-gray-600 py-1 px-4 rounded-full border border-gray-200 hover:border-gray-400 transition-colors disabled:opacity-30"
+                        >
+                            건너뛰기 →
+                        </button>
+                    </div>
+                );
             case Step.FIRST_FEEDBACK_AWAIT_USER:
                 return (
                     <div className="flex gap-4">
@@ -418,9 +558,24 @@ const App: React.FC = () => {
                     </div>
                 );
             case Step.SHADOWING_IN_PROGRESS:
-                return <button onClick={() => startListening(handleShadowingSpeech)} disabled={isListening} className={`w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300 ${isListening ? 'bg-red-500 animate-pulse' : 'bg-blue-500 hover:bg-blue-600'} text-white`}>
-                    <MicrophoneIcon className="h-10 w-10" />
-                </button>;
+                return (
+                    <div className="flex flex-col items-center gap-2 w-full">
+                        <button
+                            onClick={() => startListening(handleShadowingSpeech)}
+                            disabled={isListening}
+                            className={`w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300 ${isListening ? 'bg-red-500 animate-pulse' : 'bg-indigo-500 hover:bg-indigo-600'} text-white shadow-lg`}
+                        >
+                            <MicrophoneIcon className="h-10 w-10" />
+                        </button>
+                        <button
+                            onClick={handleSkip}
+                            disabled={isListening}
+                            className="text-xs text-gray-400 hover:text-gray-600 py-1 px-4 rounded-full border border-gray-200 hover:border-gray-400 transition-colors disabled:opacity-30"
+                        >
+                            건너뛰기 →
+                        </button>
+                    </div>
+                );
             case Step.SESSION_COMPLETE_AWAIT_USER:
                 return (
                     <div className="flex gap-4">
@@ -573,6 +728,15 @@ const App: React.FC = () => {
                         새 학습 시작
                     </button>
 
+                    <button
+                        onClick={() => { setIsMenuOpen(false); handleDownload(); }}
+                        disabled={!missionData}
+                        className="w-full flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-3 px-4 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                        <DownloadIcon className="h-5 w-5" />
+                        학습 내용 다운로드
+                    </button>
+
                     <hr className="border-gray-100" />
 
                     {/* AI Provider */}
@@ -680,6 +844,41 @@ const App: React.FC = () => {
                             <span>창의적</span>
                         </div>
                     </div>
+
+                    <hr className="border-gray-100" />
+
+                    {/* Voice Selection */}
+                    <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                            지나 목소리 (영어)
+                        </label>
+                        {englishVoices.length === 0 ? (
+                            <p className="text-xs text-gray-400">브라우저에서 목소리를 불러오는 중...</p>
+                        ) : (
+                            <select
+                                value={selectedVoiceName}
+                                onChange={(e) => handleVoiceChange(e.target.value)}
+                                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                            >
+                                <option value="">기본 목소리</option>
+                                {englishVoices.map(v => (
+                                    <option key={v.name} value={v.name}>
+                                        {v.name} ({v.lang})
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+                        {selectedVoiceName && (
+                            <button
+                                onClick={() => {
+                                    speak(`Hello! I'm Gina, your English tutor. Nice to meet you!`);
+                                }}
+                                className="mt-2 w-full text-xs text-blue-500 hover:text-blue-700 py-1.5 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors"
+                            >
+                                미리 듣기
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -708,6 +907,15 @@ const ChatMessageBubble: React.FC<{ message: ChatMessage }> = ({ message }) => {
                         {message.text}
                     </p>
                 ) : message.component}
+            </div>
+        );
+    }
+
+    // 건너뜀 메시지는 말풍선 대신 작은 안내 텍스트로 표시
+    if (isUser && message.text === '(건너뜀)') {
+        return (
+            <div className="flex justify-end">
+                <span className="text-xs text-gray-300 italic pr-1">건너뜀</span>
             </div>
         );
     }

@@ -32,8 +32,27 @@ const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecogni
 export const useSpeech = () => {
     const [isListening, setIsListening] = useState(false);
     const [isSpeaking, setIsSpeaking] = useState(false);
+    const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
     const recognitionRef = useRef<ISpeechRecognition | null>(null);
     const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+    const selectedVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
+
+    // Load available voices (fires async on most browsers)
+    useEffect(() => {
+        const loadVoices = () => {
+            const all = window.speechSynthesis.getVoices();
+            if (all.length > 0) setVoices(all);
+        };
+        loadVoices();
+        window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
+        return () => {
+            window.speechSynthesis.removeEventListener('voiceschanged', loadVoices);
+        };
+    }, []);
+
+    const setVoice = useCallback((voice: SpeechSynthesisVoice | null) => {
+        selectedVoiceRef.current = voice;
+    }, []);
 
     // Effect to initialize recognition engine
     useEffect(() => {
@@ -75,8 +94,13 @@ export const useSpeech = () => {
         }
 
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = text.match(/[a-zA-Z]/) ? 'en-US' : 'ko-KR';
+        const isEnglish = !!text.match(/[a-zA-Z]/);
+        utterance.lang = isEnglish ? 'en-US' : 'ko-KR';
         utterance.rate = 0.9;
+
+        if (isEnglish && selectedVoiceRef.current) {
+            utterance.voice = selectedVoiceRef.current;
+        }
 
         utterance.onstart = () => setIsSpeaking(true);
         utterance.onend = () => {
@@ -130,5 +154,5 @@ export const useSpeech = () => {
       }
     }, []);
 
-    return { isListening, isSpeaking, speak, startListening, stopListening, cancelSpeech };
+    return { isListening, isSpeaking, speak, startListening, stopListening, cancelSpeech, voices, setVoice };
 };
