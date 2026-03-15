@@ -22,6 +22,8 @@ const App: React.FC = () => {
     const [availableOllamaModels, setAvailableOllamaModels] = useState<string[]>([]);
 
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [isScenarioModalOpen, setIsScenarioModalOpen] = useState(false);
+    const [customScenarioInput, setCustomScenarioInput] = useState('');
     const [settings, setSettings] = useState<GenerationSettings>(() => {
         const saved = localStorage.getItem(SETTINGS_KEY);
         if (saved) {
@@ -92,7 +94,7 @@ const App: React.FC = () => {
         addMessage('system', `An error occurred: ${error.message}`);
     }
 
-    const startNewSession = useCallback(async () => {
+    const startNewSession = useCallback(async (customScenario?: string) => {
         setStep(Step.INITIAL_LOADING);
         setMessages([]);
         setUserRoleplayTranscript([]);
@@ -103,10 +105,11 @@ const App: React.FC = () => {
         setAdvancedDialogue(null);
         setCurrentRoleplayTurn(0);
         setCurrentShadowingIndex(0);
+        setCustomScenarioInput('');
         cancelSpeech();
 
         try {
-            const data = await GeminiService.generateInitialMission(settings, missionData?.missionTitle);
+            const data = await GeminiService.generateInitialMission(settings, missionData?.missionTitle, customScenario);
             setMissionData(data);
             setStep(Step.MISSION_PRESENTATION);
         } catch (error) {
@@ -114,8 +117,9 @@ const App: React.FC = () => {
         }
     }, [missionData?.missionTitle, addMessage, cancelSpeech, settings]);
 
+    // 앱 시작 시 상황 입력 모달 표시
     useEffect(() => {
-        startNewSession();
+        setIsScenarioModalOpen(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -420,14 +424,14 @@ const App: React.FC = () => {
             case Step.SESSION_COMPLETE_AWAIT_USER:
                 return (
                     <div className="flex gap-4">
-                        <button onClick={startNewSession} className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg transition-colors">New Scenario</button>
-                        <button onClick={handleSessionEnd} className="flex-1 bg-gray-400 hover:bg-gray-500 text-white font-bold py-3 px-4 rounded-lg transition-colors">End Session</button>
+                        <button onClick={() => { setCustomScenarioInput(''); setIsScenarioModalOpen(true); }} className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg transition-colors">새 상황 선택</button>
+                        <button onClick={handleSessionEnd} className="flex-1 bg-gray-400 hover:bg-gray-500 text-white font-bold py-3 px-4 rounded-lg transition-colors">오늘은 여기까지</button>
                     </div>
                 );
             case Step.SESSION_ENDED:
-                return <button onClick={startNewSession} className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors"><RefreshIcon className="h-6 w-6 mr-2"/> Start a New Session</button>;
+                return <button onClick={() => { setCustomScenarioInput(''); setIsScenarioModalOpen(true); }} className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors"><RefreshIcon className="h-6 w-6 mr-2"/> 새 학습 시작</button>;
             case Step.ERROR:
-                return <button onClick={startNewSession} className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors"><RefreshIcon className="h-6 w-6 mr-2"/> Try Again</button>;
+                return <button onClick={() => startNewSession()} className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors"><RefreshIcon className="h-6 w-6 mr-2"/> 다시 시도</button>;
             default:
                 return null;
         }
@@ -466,6 +470,77 @@ const App: React.FC = () => {
                 </button>
             </header>
 
+            {/* Scenario Input Modal */}
+            {isScenarioModalOpen && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+                        {/* Modal Header */}
+                        <div className="px-6 pt-6 pb-4">
+                            <div className="flex items-center gap-3 mb-1">
+                                <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">G</div>
+                                <div>
+                                    <h2 className="text-lg font-bold text-gray-800">어떤 상황을 연습할까요?</h2>
+                                    <p className="text-xs text-gray-400">구체적일수록 맞춤 학습이 만들어져요</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Example Chips */}
+                        <div className="px-6 pb-3">
+                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">추천 상황</p>
+                            <div className="flex flex-wrap gap-2">
+                                {[
+                                    '호텔 체크인', '레스토랑 예약', '병원 예약',
+                                    '비즈니스 미팅', '공항 탑승 수속', '쇼핑몰에서 교환',
+                                    '카페 주문', '길 묻기', '취업 면접',
+                                ].map(chip => (
+                                    <button
+                                        key={chip}
+                                        onClick={() => setCustomScenarioInput(chip)}
+                                        className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                                            customScenarioInput === chip
+                                                ? 'bg-blue-500 text-white border-blue-500'
+                                                : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-blue-300 hover:text-blue-600'
+                                        }`}
+                                    >
+                                        {chip}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Custom Input */}
+                        <div className="px-6 pb-4">
+                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">직접 입력</p>
+                            <textarea
+                                value={customScenarioInput}
+                                onChange={e => setCustomScenarioInput(e.target.value)}
+                                placeholder="예: 미국 출장 중 동료와 점심 메뉴 정하기, 해외 은행에서 계좌 개설하기..."
+                                rows={3}
+                                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none bg-gray-50"
+                            />
+                        </div>
+
+                        {/* Buttons */}
+                        <div className="px-6 pb-6 flex gap-3">
+                            <button
+                                onClick={() => { setIsScenarioModalOpen(false); startNewSession(); }}
+                                className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 text-sm font-medium hover:bg-gray-50 transition-colors"
+                            >
+                                랜덤으로 시작
+                            </button>
+                            <button
+                                onClick={() => { setIsScenarioModalOpen(false); startNewSession(customScenarioInput.trim() || undefined); }}
+                                disabled={false}
+                                className="flex-1 py-3 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold transition-colors"
+                            >
+                                {customScenarioInput.trim() ? '이 상황으로 시작' : '시작하기'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Backdrop */}
             {isMenuOpen && (
                 <div
@@ -491,7 +566,7 @@ const App: React.FC = () => {
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
                     {/* New Session */}
                     <button
-                        onClick={() => { setIsMenuOpen(false); startNewSession(); }}
+                        onClick={() => { setIsMenuOpen(false); setCustomScenarioInput(''); setIsScenarioModalOpen(true); }}
                         className="w-full flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-xl transition-colors"
                     >
                         <RefreshIcon className="h-5 w-5" />

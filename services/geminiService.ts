@@ -265,8 +265,14 @@ async function callProvider<T>(
 }
 
 export const GeminiService = {
-    generateInitialMission: async (settings: GenerationSettings, previousMissionTitle?: string): Promise<MissionData> => {
-        const prompt = `You are at STEP 1. Generate a new mission. ${previousMissionTitle ? `The previous topic was "${previousMissionTitle}", so please choose a different one.` : ''}`;
+    generateInitialMission: async (settings: GenerationSettings, previousMissionTitle?: string, customScenario?: string): Promise<MissionData> => {
+        const scenarioPart = customScenario
+            ? `The user wants to practice this specific situation: "${customScenario}". Build the mission around this scenario.`
+            : `Choose a practical daily-life or business scenario.`;
+        const previousPart = previousMissionTitle
+            ? `The previous topic was "${previousMissionTitle}", so please choose a different one.`
+            : '';
+        const prompt = `You are at STEP 1. Generate a new mission. ${scenarioPart} ${previousPart}`.trim();
         return callProvider<MissionData>("mission", prompt, missionSchema, settings);
     },
     generateFirstFeedback: async (settings: GenerationSettings, userDialogue: string[]): Promise<FirstFeedbackData> => {
