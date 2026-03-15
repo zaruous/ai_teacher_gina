@@ -70,3 +70,24 @@ export interface ChatMessage {
   component?: ReactNode;
   timestamp: string;
 }
+
+export type AIProvider = 'gemini' | 'openai' | 'ollama' | 'web-service';
+
+export interface ProviderConfig {
+  modelName: string;
+  baseUrl?: string;
+  apiKey?: string;
+}
+
+export interface GenerationSettings {
+  provider: AIProvider;
+  providerConfigs: Record<AIProvider, ProviderConfig>;
+  temperature: number;
+  language: 'ko' | 'en';
+}
+
+export interface GenerationResult {
+    logs: string[];
+    explanation: string;
+    [key: string]: any;
+}
