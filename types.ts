@@ -73,6 +73,8 @@ export interface ChatMessage {
 
 export type AIProvider = 'gemini' | 'openai' | 'ollama' | 'web-service';
 
+export type TargetLanguage = 'en' | 'zh' | 'ja' | 'es' | 'fr';
+
 export interface ProviderConfig {
   modelName: string;
   baseUrl?: string;
@@ -84,6 +86,7 @@ export interface GenerationSettings {
   providerConfigs: Record<AIProvider, ProviderConfig>;
   temperature: number;
   language: 'ko' | 'en';
+  targetLanguage: TargetLanguage;
 }
 
 export interface GenerationResult {

@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Step, type ChatMessage, type MissionData, type DialogueTurn, type FirstFeedbackData, type FinalFeedbackData, type AdvancedDialogueData, KeyExpression, type GenerationSettings, type AIProvider } from './types';
+import { Step, type ChatMessage, type MissionData, type DialogueTurn, type FirstFeedbackData, type FinalFeedbackData, type AdvancedDialogueData, KeyExpression, type GenerationSettings, type AIProvider, type TargetLanguage } from './types';
 import { GeminiService, DEFAULT_SETTINGS, getOllamaModels } from './services/geminiService';
+import { LANGUAGE_LABELS, LANGUAGE_LOCALES, LANGUAGE_FLAGS } from './constants';
 import { useSpeech } from './hooks/useSpeech';
 import LoadingSpinner from './components/LoadingSpinner';
 import { MicrophoneIcon, PlayIcon, RefreshIcon, CheckIcon, HamburgerIcon, XIcon, DownloadIcon } from './components/Icons';
@@ -70,12 +71,21 @@ const App: React.FC = () => {
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     }, [settings]);
     
-    const { isListening, isSpeaking, speak, startListening, stopListening, cancelSpeech, voices, setVoice } = useSpeech();
+    const { isListening, isSpeaking, speak, startListening, stopListening, cancelSpeech, voices, setVoice, setTargetLocale } = useSpeech();
     const [selectedVoiceName, setSelectedVoiceName] = useState<string>(
         () => localStorage.getItem('gina_voice') ?? ''
     );
 
-    const englishVoices = voices.filter(v => v.lang.startsWith('en'));
+    const targetLocale = LANGUAGE_LOCALES[settings.targetLanguage || 'en'] || 'en-US';
+    const targetVoices = voices.filter(v => v.lang.startsWith(targetLocale.split('-')[0]));
+
+    // 언어 설정이 바뀌면 TTS/STT locale 동기화 및 선택 음성 초기화
+    useEffect(() => {
+        setTargetLocale(targetLocale);
+        setSelectedVoiceName('');
+        setVoice(null);
+        localStorage.removeItem('gina_voice');
+    }, [settings.targetLanguage, setTargetLocale]);
 
     // voices가 비동기로 로드된 후 저장된 목소리를 자동 적용
     useEffect(() => {
@@ -93,6 +103,10 @@ const App: React.FC = () => {
         }
         const voice = voices.find(v => v.name === name) ?? null;
         setVoice(voice);
+    };
+
+    const handleTargetLanguageChange = (lang: TargetLanguage) => {
+        setSettings(prev => ({ ...prev, targetLanguage: lang }));
     };
     const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -438,28 +452,70 @@ const App: React.FC = () => {
     }, [missionData, messages, firstFeedback, finalFeedback]);
 
     // Card Components defined inside App to have access to state and handlers
-    const MissionCard = ({ mission }: { mission: MissionData }) => (
-        <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
-            <h2 className="text-2xl font-bold text-blue-600 mb-2">{mission?.missionTitle || 'Loading Mission...'}</h2>
-            <p className="text-gray-600 mb-4">{mission?.scenario || ''}</p>
-            <div className="mb-4">
-                <h3 className="font-semibold text-lg text-gray-800 mb-2">Key Expressions</h3>
-                <ul className="space-y-1 list-disc list-inside">
-                    {(mission?.keyExpressions || []).map((exp, i) => <li key={i}><span className="font-medium text-gray-700">{exp?.english}</span>: {exp?.korean}</li>)}
-                </ul>
-            </div>
-             <div className="mb-4">
-                <h3 className="font-semibold text-lg text-gray-800 mb-2">Example Dialogue</h3>
-                <div className="space-y-2 text-sm bg-gray-50 p-3 rounded-md">
-                    {(mission?.exampleDialogue || []).map((d, i) => <p key={i}><span className={`font-bold ${d?.speaker === 'teacher' ? 'text-blue-500' : 'text-green-500'}`}>{d?.speaker === 'teacher' ? 'Tutor' : 'You'}:</span> {d?.sentence}</p>)}
+    const MissionCard = ({ mission }: { mission: MissionData }) => {
+        const [playingIdx, setPlayingIdx] = useState<number | null>(null);
+
+        const handlePlay = (sentence: string, idx: number) => {
+            if (playingIdx === idx) {
+                cancelSpeech();
+                setPlayingIdx(null);
+            } else {
+                cancelSpeech();
+                setPlayingIdx(idx);
+                speak(sentence, () => setPlayingIdx(null));
+            }
+        };
+
+        return (
+            <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
+                <h2 className="text-2xl font-bold text-blue-600 mb-2">{mission?.missionTitle || 'Loading Mission...'}</h2>
+                <p className="text-gray-600 mb-4">{mission?.scenario || ''}</p>
+                <div className="mb-4">
+                    <h3 className="font-semibold text-lg text-gray-800 mb-2">Key Expressions</h3>
+                    <ul className="space-y-1 list-disc list-inside">
+                        {(mission?.keyExpressions || []).map((exp, i) => <li key={i}><span className="font-medium text-gray-700">{exp?.english}</span>: {exp?.korean}</li>)}
+                    </ul>
+                </div>
+                <div className="mb-4">
+                    <h3 className="font-semibold text-lg text-gray-800 mb-2">Example Dialogue</h3>
+                    <div className="space-y-2 text-sm bg-gray-50 p-3 rounded-md">
+                        {(mission?.exampleDialogue || []).map((d, i) => (
+                            <div key={i} className="flex items-start gap-2">
+                                <p className="flex-1">
+                                    <span className={`font-bold ${d?.speaker === 'teacher' ? 'text-blue-500' : 'text-green-500'}`}>
+                                        {d?.speaker === 'teacher' ? 'Tutor' : 'You'}:
+                                    </span>{' '}{d?.sentence}
+                                </p>
+                                <button
+                                    onClick={() => handlePlay(d.sentence, i)}
+                                    title="이 문장 듣기"
+                                    className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-colors mt-0.5 ${
+                                        playingIdx === i
+                                            ? 'bg-blue-500 text-white'
+                                            : 'bg-gray-200 text-gray-500 hover:bg-blue-100 hover:text-blue-500'
+                                    }`}
+                                >
+                                    {playingIdx === i ? (
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                                            <rect x="4" y="4" width="12" height="12" rx="1" />
+                                        </svg>
+                                    ) : (
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path d="M6.3 2.84A1.5 1.5 0 004 4.11v11.78a1.5 1.5 0 002.3 1.27l9.344-5.891a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                                        </svg>
+                                    )}
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                <div className="bg-blue-50 border-l-4 border-blue-400 p-3 rounded-r-lg">
+                    <h4 className="font-semibold text-blue-800">Today's Tip!</h4>
+                    <p className="text-blue-700">{mission?.tip || ''}</p>
                 </div>
             </div>
-            <div className="bg-blue-50 border-l-4 border-blue-400 p-3 rounded-r-lg">
-                <h4 className="font-semibold text-blue-800">Today's Tip!</h4>
-                <p className="text-blue-700">{mission?.tip || ''}</p>
-            </div>
-        </div>
-    );
+        );
+    };
     
     const FirstFeedbackCard = ({ feedback }: { feedback: FirstFeedbackData }) => (
         <div className="bg-white p-4 rounded-lg shadow-sm">
@@ -613,7 +669,12 @@ const App: React.FC = () => {
                 <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-sm">G</div>
                     <div>
-                        <h1 className="text-lg font-bold text-gray-800 leading-tight">Gina AI Tutor</h1>
+                        <h1 className="text-lg font-bold text-gray-800 leading-tight flex items-center gap-1.5">
+                            Gina AI Tutor
+                            <span className="text-xs font-semibold bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">
+                                {LANGUAGE_FLAGS[settings.targetLanguage || 'en']} {LANGUAGE_LABELS[settings.targetLanguage || 'en']}
+                            </span>
+                        </h1>
                         <p className="text-xs text-gray-400 leading-tight">{providerLabel[settings.provider] || settings.provider} · {settings.providerConfigs[settings.provider]?.modelName || '-'}</p>
                     </div>
                 </div>
@@ -907,12 +968,33 @@ const App: React.FC = () => {
 
                     <hr className="border-gray-100" />
 
+                    {/* Target Language */}
+                    <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">학습 언어</label>
+                        <div className="grid grid-cols-3 gap-2">
+                            {(Object.keys(LANGUAGE_LABELS) as TargetLanguage[]).map(lang => (
+                                <button
+                                    key={lang}
+                                    onClick={() => handleTargetLanguageChange(lang)}
+                                    className={`flex flex-col items-center py-2 px-1 rounded-xl border text-xs font-semibold transition-all ${
+                                        settings.targetLanguage === lang
+                                            ? 'bg-blue-500 text-white border-blue-500'
+                                            : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-blue-300'
+                                    }`}
+                                >
+                                    <span className="text-lg mb-0.5">{LANGUAGE_FLAGS[lang]}</span>
+                                    {LANGUAGE_LABELS[lang]}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
                     {/* Voice Selection */}
                     <div>
                         <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                            지나 목소리 (영어)
+                            지나 목소리 ({LANGUAGE_LABELS[settings.targetLanguage || 'en']})
                         </label>
-                        {englishVoices.length === 0 ? (
+                        {targetVoices.length === 0 ? (
                             <p className="text-xs text-gray-400">브라우저에서 목소리를 불러오는 중...</p>
                         ) : (
                             <select
@@ -921,7 +1003,7 @@ const App: React.FC = () => {
                                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-400"
                             >
                                 <option value="">기본 목소리</option>
-                                {englishVoices.map(v => (
+                                {targetVoices.map(v => (
                                     <option key={v.name} value={v.name}>
                                         {v.name} ({v.lang})
                                     </option>
@@ -931,7 +1013,14 @@ const App: React.FC = () => {
                         {selectedVoiceName && (
                             <button
                                 onClick={() => {
-                                    speak(`Hello! I'm Gina, your English tutor. Nice to meet you!`);
+                                    const previewTexts: Record<string, string> = {
+                                        en: "Hello! I'm Gina, your language tutor. Nice to meet you!",
+                                        zh: "你好！我是吉娜，你的语言老师。很高兴认识你！",
+                                        ja: "こんにちは！私はジーナ、あなたの言語チューターです。よろしく！",
+                                        es: "¡Hola! Soy Gina, tu tutora de idiomas. ¡Encantada de conocerte!",
+                                        fr: "Bonjour! Je suis Gina, votre tutrice de langue. Ravie de vous rencontrer!",
+                                    };
+                                    speak(previewTexts[settings.targetLanguage || 'en'] || previewTexts.en);
                                 }}
                                 className="mt-2 w-full text-xs text-blue-500 hover:text-blue-700 py-1.5 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors"
                             >

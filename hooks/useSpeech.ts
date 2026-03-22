@@ -36,6 +36,7 @@ export const useSpeech = () => {
     const recognitionRef = useRef<ISpeechRecognition | null>(null);
     const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
     const selectedVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
+    const targetLocaleRef = useRef<string>('en-US');
 
     // Load available voices (fires async on most browsers)
     useEffect(() => {
@@ -52,6 +53,13 @@ export const useSpeech = () => {
 
     const setVoice = useCallback((voice: SpeechSynthesisVoice | null) => {
         selectedVoiceRef.current = voice;
+    }, []);
+
+    const setTargetLocale = useCallback((locale: string) => {
+        targetLocaleRef.current = locale;
+        if (recognitionRef.current) {
+            recognitionRef.current.lang = locale;
+        }
     }, []);
 
     // Effect to initialize recognition engine
@@ -94,12 +102,16 @@ export const useSpeech = () => {
         }
 
         const utterance = new SpeechSynthesisUtterance(text);
-        const isEnglish = !!text.match(/[a-zA-Z]/);
-        utterance.lang = isEnglish ? 'en-US' : 'ko-KR';
+        const isKorean = !!text.match(/[가-힣]/);
+        utterance.lang = isKorean ? 'ko-KR' : targetLocaleRef.current;
         utterance.rate = 0.9;
 
-        if (isEnglish && selectedVoiceRef.current) {
-            utterance.voice = selectedVoiceRef.current;
+        if (!isKorean && selectedVoiceRef.current) {
+            const voiceLangPrefix = selectedVoiceRef.current.lang.split('-')[0];
+            const targetLangPrefix = targetLocaleRef.current.split('-')[0];
+            if (voiceLangPrefix === targetLangPrefix) {
+                utterance.voice = selectedVoiceRef.current;
+            }
         }
 
         utterance.onstart = () => setIsSpeaking(true);
@@ -154,5 +166,5 @@ export const useSpeech = () => {
       }
     }, []);
 
-    return { isListening, isSpeaking, speak, startListening, stopListening, cancelSpeech, voices, setVoice };
+    return { isListening, isSpeaking, speak, startListening, stopListening, cancelSpeech, voices, setVoice, setTargetLocale };
 };

@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { GINA_SYSTEM_PROMPT } from '../constants';
+import { getSystemPrompt, LANGUAGE_LABELS } from '../constants';
 import type { 
     MissionData, 
     FirstFeedbackData, 
@@ -33,7 +33,8 @@ export const DEFAULT_SETTINGS: GenerationSettings = {
         }
     },
     temperature: 0.7,
-    language: 'ko'
+    language: 'ko',
+    targetLanguage: 'en'
 };
 
 /**
@@ -192,6 +193,8 @@ async function callProvider<T>(
 ): Promise<T> {
     const config = settings.providerConfigs[settings.provider];
 
+    const systemPrompt = getSystemPrompt(settings.targetLanguage || 'en');
+
     if (settings.provider === 'gemini') {
         if (!config.apiKey) throw new Error("Gemini API Key missing");
         const ai = new GoogleGenAI({ apiKey: config.apiKey });
@@ -199,7 +202,7 @@ async function callProvider<T>(
             model: config.modelName,
             contents: prompt,
             config: {
-                systemInstruction: GINA_SYSTEM_PROMPT,
+                systemInstruction: systemPrompt,
                 responseMimeType: "application/json",
                 responseSchema: schema,
             },
@@ -219,7 +222,7 @@ async function callProvider<T>(
             body: JSON.stringify({
                 model: config.modelName,
                 messages: [
-                    { role: "system", content: GINA_SYSTEM_PROMPT + `\nReturn ONLY strictly valid JSON with NO extra text. Your response must match this exact schema:\n${schemaStr}` },
+                    { role: "system", content: systemPrompt + `\nReturn ONLY strictly valid JSON with NO extra text. Your response must match this exact schema:\n${schemaStr}` },
                     { role: "user", content: prompt }
                 ],
                 temperature: settings.temperature,
@@ -240,7 +243,7 @@ async function callProvider<T>(
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 prompt,
-                systemPrompt: GINA_SYSTEM_PROMPT,
+                systemPrompt,
                 stage,
                 context,
                 settings
@@ -266,25 +269,29 @@ async function callProvider<T>(
 
 export const GeminiService = {
     generateInitialMission: async (settings: GenerationSettings, previousMissionTitle?: string, customScenario?: string): Promise<MissionData> => {
+        const langLabel = LANGUAGE_LABELS[settings.targetLanguage || 'en'] || '영어';
         const scenarioPart = customScenario
-            ? `The user wants to practice this specific situation: "${customScenario}". Build the mission around this scenario.`
+            ? `The user wants to practice this specific situation: "${customScenario}". Build the mission around this scenario. Please create a dialogue consisting of at least 8 to 10 sentences. `
             : `Choose a practical daily-life or business scenario.`;
         const previousPart = previousMissionTitle
             ? `The previous topic was "${previousMissionTitle}", so please choose a different one.`
             : '';
-        const prompt = `You are at STEP 1. Generate a new mission. ${scenarioPart} ${previousPart}`.trim();
+        const prompt = `You are at STEP 1. Generate a new mission in ${langLabel}. All dialogue sentences must be written in ${langLabel}. ${scenarioPart} ${previousPart}`.trim();
         return callProvider<MissionData>("mission", prompt, missionSchema, settings);
     },
     generateFirstFeedback: async (settings: GenerationSettings, userDialogue: string[]): Promise<FirstFeedbackData> => {
-        const prompt = `You are at STEP 4. The user has completed the first role-play. Their spoken sentences were: ${JSON.stringify(userDialogue)}. Provide positive feedback and two new expressions for an advanced challenge.`;
+        const langLabel = LANGUAGE_LABELS[settings.targetLanguage || 'en'] || '영어';
+        const prompt = `You are at STEP 4. The user has completed the first role-play in ${langLabel}. Their spoken sentences were: ${JSON.stringify(userDialogue)}. Provide positive feedback and two new ${langLabel} expressions for an advanced challenge.`;
         return callProvider<FirstFeedbackData>("firstFeedback", prompt, firstFeedbackSchema, settings, { userDialogue });
     },
     generateAdvancedDialogue: async (settings: GenerationSettings, mission: MissionData): Promise<AdvancedDialogueData> => {
-        const prompt = `You are at STEP 5. The user agreed to the advanced challenge. Based on the initial mission "${mission.missionTitle}: ${mission.scenario}", generate a new, related advanced dialogue for the user to practice with.`;
+        const langLabel = LANGUAGE_LABELS[settings.targetLanguage || 'en'] || '영어';
+        const prompt = `You are at STEP 5. The user agreed to the advanced challenge. Based on the initial mission "${mission.missionTitle}: ${mission.scenario}", generate a new, related advanced dialogue in ${langLabel} for the user to practice with.`;
         return callProvider<AdvancedDialogueData>("advancedDialogue", prompt, advancedDialogueSchema, settings, { mission });
     },
     generateFinalFeedback: async (settings: GenerationSettings, mission: MissionData, basicDialogue: string[], advancedDialogue: string[]): Promise<FinalFeedbackData> => {
-        const prompt = `You are at STEP 6. The user has completed both role-plays.
+        const langLabel = LANGUAGE_LABELS[settings.targetLanguage || 'en'] || '영어';
+        const prompt = `You are at STEP 6. The user has completed both role-plays in ${langLabel}.
     - Mission: ${mission.missionTitle}
     - Basic Role-play sentences from user: ${JSON.stringify(basicDialogue)}
     - Advanced Role-play sentences from user: ${JSON.stringify(advancedDialogue)}
