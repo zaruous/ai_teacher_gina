@@ -24,6 +24,7 @@ const App: React.FC = () => {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isScenarioModalOpen, setIsScenarioModalOpen] = useState(false);
     const [customScenarioInput, setCustomScenarioInput] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
     const [settings, setSettings] = useState<GenerationSettings>(() => {
         const saved = localStorage.getItem(SETTINGS_KEY);
         if (saved) {
@@ -626,75 +627,134 @@ const App: React.FC = () => {
             </header>
 
             {/* Scenario Input Modal */}
-            {isScenarioModalOpen && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
-                        {/* Modal Header */}
-                        <div className="px-6 pt-6 pb-4">
-                            <div className="flex items-center gap-3 mb-1">
-                                <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">G</div>
-                                <div>
-                                    <h2 className="text-lg font-bold text-gray-800">어떤 상황을 연습할까요?</h2>
-                                    <p className="text-xs text-gray-400">구체적일수록 맞춤 학습이 만들어져요</p>
+            {isScenarioModalOpen && (() => {
+                const CATEGORIES = [
+                    {
+                        id: '여행', label: '✈️ 여행', chips: [
+                            '호텔 체크인', '공항 탑승 수속', '길 묻기', '관광지 안내 요청',
+                            '호텔에서 룸서비스 주문', '렌터카 예약', '여행 짐 분실 신고',
+                        ],
+                    },
+                    {
+                        id: '음식', label: '🍽️ 음식', chips: [
+                            '레스토랑 예약', '카페 주문', '음식 알레르기 설명',
+                            '패스트푸드 주문', '음식 추천 요청', '테이크아웃 주문',
+                        ],
+                    },
+                    {
+                        id: '비즈니스', label: '💼 비즈니스', chips: [
+                            '비즈니스 미팅', '취업 면접', '전화 회의 참여',
+                            '프레젠테이션 발표', '이메일 내용 전달', '협상 및 계약',
+                        ],
+                    },
+                    {
+                        id: '생활', label: '🏠 생활', chips: [
+                            '병원 예약', '쇼핑몰에서 교환', '은행 업무',
+                            '약국에서 약 구매', '우체국 소포 발송', '헬스장 등록',
+                        ],
+                    },
+                    {
+                        id: '직접입력', label: '✏️ 직접 입력', chips: [],
+                    },
+                ];
+                const activeCat = CATEGORIES.find(c => c.id === selectedCategory);
+                return (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
+                        <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+                            {/* Modal Header */}
+                            <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">G</div>
+                                    <div>
+                                        <h2 className="text-lg font-bold text-gray-800">어떤 상황을 연습할까요?</h2>
+                                        <p className="text-xs text-gray-400">카테고리를 선택하거나 직접 입력하세요</p>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        {/* Example Chips */}
-                        <div className="px-6 pb-3">
-                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">추천 상황</p>
-                            <div className="flex flex-wrap gap-2">
-                                {[
-                                    '호텔 체크인', '레스토랑 예약', '병원 예약',
-                                    '비즈니스 미팅', '공항 탑승 수속', '쇼핑몰에서 교환',
-                                    '카페 주문', '길 묻기', '취업 면접',
-                                ].map(chip => (
-                                    <button
-                                        key={chip}
-                                        onClick={() => setCustomScenarioInput(chip)}
-                                        className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
-                                            customScenarioInput === chip
-                                                ? 'bg-blue-500 text-white border-blue-500'
-                                                : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-blue-300 hover:text-blue-600'
-                                        }`}
-                                    >
-                                        {chip}
-                                    </button>
-                                ))}
+                            {/* Category Tabs */}
+                            <div className="px-4 pt-4 pb-2">
+                                <div className="flex flex-wrap gap-2">
+                                    {CATEGORIES.map(cat => (
+                                        <button
+                                            key={cat.id}
+                                            onClick={() => {
+                                                setSelectedCategory(cat.id === selectedCategory ? null : cat.id);
+                                                if (cat.id !== '직접입력') setCustomScenarioInput('');
+                                            }}
+                                            className={`flex-shrink-0 text-xs px-3 py-2 rounded-full font-semibold border transition-all ${
+                                                selectedCategory === cat.id
+                                                    ? 'bg-blue-500 text-white border-blue-500 shadow-sm'
+                                                    : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-blue-300 hover:text-blue-600'
+                                            }`}
+                                        >
+                                            {cat.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Chips or Input Area */}
+                            <div className="px-6 py-3 overflow-y-auto no-scrollbar" style={{maxHeight: '38vh', minHeight: '80px', scrollbarWidth: 'none', msOverflowStyle: 'none'} as React.CSSProperties}>
+                                {!selectedCategory && (
+                                    <p className="text-sm text-gray-400 text-center mt-6">위에서 카테고리를 선택하거나<br />직접 입력 탭을 눌러 시작하세요</p>
+                                )}
+                                {activeCat && activeCat.id !== '직접입력' && (
+                                    <div className="flex flex-wrap gap-2">
+                                        {activeCat.chips.map(chip => (
+                                            <button
+                                                key={chip}
+                                                onClick={() => setCustomScenarioInput(chip)}
+                                                className={`text-sm px-3 py-2 rounded-xl border transition-colors ${
+                                                    customScenarioInput === chip
+                                                        ? 'bg-blue-500 text-white border-blue-500'
+                                                        : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-blue-300 hover:text-blue-600'
+                                                }`}
+                                            >
+                                                {chip}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                                {activeCat && activeCat.id === '직접입력' && (
+                                    <textarea
+                                        autoFocus
+                                        value={customScenarioInput}
+                                        onChange={e => setCustomScenarioInput(e.target.value)}
+                                        placeholder="예: 미국 출장 중 동료와 점심 메뉴 정하기, 해외 은행에서 계좌 개설하기..."
+                                        rows={4}
+                                        className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none bg-gray-50"
+                                    />
+                                )}
+                                {/* Show selected scenario preview */}
+                                {customScenarioInput.trim() && activeCat?.id !== '직접입력' && (
+                                    <div className="mt-3 flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">
+                                        <span className="text-blue-500 text-xs font-semibold">선택됨</span>
+                                        <span className="text-blue-700 text-sm flex-1">{customScenarioInput}</span>
+                                        <button onClick={() => setCustomScenarioInput('')} className="text-blue-400 hover:text-blue-600 text-xs">✕</button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Buttons */}
+                            <div className="px-6 pb-6 pt-2 flex gap-3 border-t border-gray-100">
+                                <button
+                                    onClick={() => { setIsScenarioModalOpen(false); setSelectedCategory(null); startNewSession(); }}
+                                    className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 text-sm font-medium hover:bg-gray-50 transition-colors"
+                                >
+                                    랜덤으로 시작
+                                </button>
+                                <button
+                                    onClick={() => { setIsScenarioModalOpen(false); setSelectedCategory(null); startNewSession(customScenarioInput.trim() || undefined); }}
+                                    className="flex-1 py-3 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold transition-colors"
+                                >
+                                    {customScenarioInput.trim() ? '이 상황으로 시작' : '시작하기'}
+                                </button>
                             </div>
                         </div>
-
-                        {/* Custom Input */}
-                        <div className="px-6 pb-4">
-                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">직접 입력</p>
-                            <textarea
-                                value={customScenarioInput}
-                                onChange={e => setCustomScenarioInput(e.target.value)}
-                                placeholder="예: 미국 출장 중 동료와 점심 메뉴 정하기, 해외 은행에서 계좌 개설하기..."
-                                rows={3}
-                                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none bg-gray-50"
-                            />
-                        </div>
-
-                        {/* Buttons */}
-                        <div className="px-6 pb-6 flex gap-3">
-                            <button
-                                onClick={() => { setIsScenarioModalOpen(false); startNewSession(); }}
-                                className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 text-sm font-medium hover:bg-gray-50 transition-colors"
-                            >
-                                랜덤으로 시작
-                            </button>
-                            <button
-                                onClick={() => { setIsScenarioModalOpen(false); startNewSession(customScenarioInput.trim() || undefined); }}
-                                disabled={false}
-                                className="flex-1 py-3 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold transition-colors"
-                            >
-                                {customScenarioInput.trim() ? '이 상황으로 시작' : '시작하기'}
-                            </button>
-                        </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
 
             {/* Backdrop */}
             {isMenuOpen && (
@@ -721,7 +781,7 @@ const App: React.FC = () => {
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
                     {/* New Session */}
                     <button
-                        onClick={() => { setIsMenuOpen(false); setCustomScenarioInput(''); setIsScenarioModalOpen(true); }}
+                        onClick={() => { setIsMenuOpen(false); setCustomScenarioInput(''); setSelectedCategory(null); setIsScenarioModalOpen(true); }}
                         className="w-full flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-xl transition-colors"
                     >
                         <RefreshIcon className="h-5 w-5" />
